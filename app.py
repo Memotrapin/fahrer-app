@@ -2,57 +2,58 @@ import streamlit as st
 import requests
 from datetime import datetime
 
-st.set_page_config(page_title="Fahrer-App", layout="centered")
+st.set_page_config(page_title="Fahrer-App", layout="wide")
 
-# --- CSS für ein extrem kompaktes Design ---
+# CSS für eine klare Tabellen-Optik
 st.markdown("""
     <style>
-    .stApp { padding: 10px; }
-    .status-bar { display: flex; justify-content: space-between; background: #eee; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-size: 12px; }
-    .stop-line { border-bottom: 1px solid #ddd; padding: 5px 0; font-size: 13px; }
+    .row { display: flex; align-items: center; border-bottom: 1px solid #ddd; padding: 10px 0; font-size: 14px; }
+    .col-info { flex: 4; }
+    .col-status { flex: 1; text-align: right; font-weight: bold; }
+    .früh { color: blue; }
+    .pünktlich { color: green; }
+    .spät { color: red; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN (bleibt gleich) ---
-FAHRER_LOGINS = {"13292": "passwort123"}
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
+# ... (Login bleibt wie gehabt) ...
+# Gehe direkt zum Dashboard-Teil:
 
-if not st.session_state.logged_in:
-    st.title("🚛 Login")
-    uid = st.text_input("Fahrer-ID")
-    pwd = st.text_input("Passwort", type="password")
-    if st.button("Anmelden"):
-        if uid in FAHRER_LOGINS and FAHRER_LOGINS[uid] == pwd:
-            st.session_state.logged_in = True
-            st.session_state.driver_id = uid
-            st.rerun()
-else:
-    heute = "2026-06-09" # Zum Testen
+    heute = "2026-06-09" 
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
     
     try:
         data = requests.get(url).json()
         for route in data.get("routes", []):
-            # KOMPAKTE STATUSLEISTE
-            st.markdown(f"""
-                <div class="status-bar">
-                <span>Touren: <b>{len(data.get("routes", []))}</b></span>
-                <span>Gesamt: <b>{route.get("numTotalOrders", 0)}</b></span>
-                <span>Geliefert: <b>{route.get("numDeliveredOrders", 0)}</b></span>
-                </div>
-            """, unsafe_allow_html=True)
+            st.write(f"### 🚛 Tour {route.get('id')} | {route.get('numDeliveredOrders')}/{route.get('numTotalOrders')} Stopps")
             
-            # KOMPAKTE STOPP-LISTE
             for cp in route.get("checkpoints", []):
                 an = cp.get('realArrivalTime', '')
-                plan = cp.get('plannedArrivalTime', '')[11:16]
-                ist = an[11:16] if an else "--"
-                status = "✅" if an and an <= cp.get('deliverTill', '') else "⚠️" if an else "⏳"
+                start = cp.get('deliverSince', '')[11:16]
+                ende = cp.get('deliverTill', '')[11:16]
                 
+                # Status Logik
+                if not an: 
+                    status_text = "OFFEN"
+                    css_class = ""
+                elif an < cp.get('deliverSince', ''):
+                    status_text = "FRÜH"
+                    css_class = "früh"
+                elif an > cp.get('deliverTill', ''):
+                    status_text = "SPÄT"
+                    css_class = "spät"
+                else:
+                    status_text = "PÜNKTLICH"
+                    css_class = "pünktlich"
+
+                # Aufbau der Zeile
                 st.markdown(f"""
-                    <div class="stop-line">
-                    {status} <b>{cp.get('address')}</b><br>
-                    <small>Zeit: {cp.get('deliverSince','')[11:16]}-{cp.get('deliverTill','')[11:16]} | Plan: {plan} | Ist: {ist}</small>
+                    <div class="row">
+                        <div class="col-info">
+                            <b>{cp.get('address')}</b><br>
+                            <small>Zeitfenster: {start}-{ende} | Ankunft: {an[11:16] if an else '--'}</small>
+                        </div>
+                        <div class="col-status {css_class}">{status_text}</div>
                     </div>
                 """, unsafe_allow_html=True)
     except:
