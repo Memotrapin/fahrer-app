@@ -4,13 +4,8 @@ from datetime import datetime
 
 st.set_page_config(page_title="Fahrer-Portal", layout="wide")
 
-# Konfiguration der Zugangsdaten
-# Hier kannst du beliebig viele IDs und deren Passwörter hinterlegen
-FAHRER_LOGINS = {
-    "13292": "passwort123",
-    "9848": "geheimnis",
-    "10004": "yokya"
-}
+# Fahrer-Logins
+FAHRER_LOGINS = {"13292": "passwort123", "12345": "geheimnis"}
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -19,32 +14,37 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.title("🚛 Fahrer-Login")
     input_id = st.text_input("Fahrer-ID")
-    input_pass = st.text_input("Passwort", type="password") # Versteckte Eingabe
-    
+    input_pass = st.text_input("Passwort", type="password")
     if st.button("Anmelden"):
-        # Überprüfung: ID vorhanden UND Passwort korrekt?
         if input_id in FAHRER_LOGINS and FAHRER_LOGINS[input_id] == input_pass:
             st.session_state.driver_id = input_id
             st.session_state.logged_in = True
             st.rerun()
         else:
-            st.error("Falsche ID oder falsches Passwort.")
-            # ... innerhalb der else-Bedingung (nach dem Login) ...
+            st.error("Falsche ID oder Passwort.")
+else:
+    st.sidebar.button("Abmelden", on_click=lambda: st.session_state.update({"logged_in": False}))
     
-    # Datum erzwungen im Format YYYY-MM-DD
+    st.title(f"Hallo Fahrer {st.session_state.driver_id}!")
     heute = datetime.now().strftime('%Y-%m-%d')
-    st.write(f"Debug: Versuche Daten abzurufen für Datum: {heute}")
+    st.write(f"Datum für Abfrage: {heute}")
     
     org_id = "b993a325-6d34-4af5-a955-3d0b5e07cd47"
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId={org_id}"
     
-    # Zeige die URL kurz an, damit du sie kopieren kannst
-    st.write(f"Debug URL: {url}")
-
-else:
-    # --- Dashboard ---
-    st.sidebar.button("Abmelden", on_click=lambda: st.session_state.update({"logged_in": False}))
-    
-    # Hier kommt dein restlicher Dashboard-Code von vorhin hin...
-    st.write(f"Willkommen, Fahrer {st.session_state.driver_id}")
-    # (Restlicher Code zur Datenabfrage...)
+    # --- HIER IST DER TRY-BLOCK ---
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            routes = data.get("routes", [])
+            if not routes:
+                st.info("Keine Daten für heute gefunden.")
+            for route in routes:
+                st.write(f"### Tour {route.get('id')}")
+                # ... hier kommen deine Tabellen ...
+        else:
+            st.warning(f"Keine Daten gefunden (Status: {response.status_code})")
+    except Exception as e:
+        st.error(f"Fehler bei der Verbindung: {e}")
+    # --- ENDE DES TRY-BLOCKS ---
