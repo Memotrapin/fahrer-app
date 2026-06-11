@@ -9,7 +9,7 @@ st.set_page_config(page_title="Fahrer-Portal", layout="wide")
 FAHRER_LOGINS = {
     "13292": "passwort123",
     "12345": "geheimnis",
-    "99999": "test"
+    "10004": "yokya"
 }
 
 if "logged_in" not in st.session_state:
