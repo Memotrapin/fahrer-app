@@ -5,7 +5,7 @@ from datetime import datetime
 st.set_page_config(page_title="Fahrer-Portal", layout="wide")
 
 # Fahrer-Logins
-FAHRER_LOGINS = {"13292": "passwort123", "12345": "geheimnis"}
+FAHRER_LOGINS = {"13292": "passwort123"}
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -24,15 +24,12 @@ if not st.session_state.logged_in:
             st.error("Falsche ID oder Passwort.")
 else:
     st.sidebar.button("Abmelden", on_click=lambda: st.session_state.update({"logged_in": False}))
-    
     st.title(f"Hallo Fahrer {st.session_state.driver_id}!")
     heute = datetime.now().strftime('%Y-%m-%d')
-    st.write(f"Datum für Abfrage: {heute}")
     
     org_id = "b993a325-6d34-4af5-a955-3d0b5e07cd47"
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId={org_id}"
     
-    # --- HIER IST DER TRY-BLOCK ---
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -40,11 +37,28 @@ else:
             routes = data.get("routes", [])
             if not routes:
                 st.info("Keine Daten für heute gefunden.")
+            
             for route in routes:
-                st.write(f"### Tour {route.get('id')}")
-                # ... hier kommen deine Tabellen ...
+                st.subheader(f"Tour {route.get('id')}")
+                # HIER ZEIGEN WIR DIE DETAILS AN:
+                checkpoints = route.get("checkpoints", [])
+                if checkpoints:
+                    for cp in checkpoints:
+                        # Status-Logik
+                        start = cp.get('deliverSince', '00:00:00')
+                        ende = cp.get('deliverTill', '23:59:59')
+                        an = cp.get('realArrivalTime')
+                        
+                        status = "✅ Pünktlich"
+                        if an:
+                            if an < start: status = "🚀 Zu früh"
+                            elif an > ende: status = "⚠️ Zu spät"
+                        
+                        st.write(f"📍 **{cp.get('address')}**")
+                        st.caption(f"Zeitfenster: {start[11:16]} - {ende[11:16]} | Ankunft: {an[11:16] if an else 'Offen'} | Status: {status}")
+                else:
+                    st.write("Keine Stopps in dieser Tour gefunden.")
         else:
-            st.warning(f"Keine Daten gefunden (Status: {response.status_code})")
+            st.error(f"Server-Fehler: {response.status_code}")
     except Exception as e:
-        st.error(f"Fehler bei der Verbindung: {e}")
-    # --- ENDE DES TRY-BLOCKS ---
+        st.error(f"Fehler: {e}")
