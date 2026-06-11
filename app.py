@@ -29,6 +29,17 @@ if not st.session_state.logged_in:
             st.rerun()
         else:
             st.error("Falsche ID oder falsches Passwort.")
+            # ... innerhalb der else-Bedingung (nach dem Login) ...
+    
+    # Datum erzwungen im Format YYYY-MM-DD
+    heute = datetime.now().strftime('%Y-%m-%d')
+    st.write(f"Debug: Versuche Daten abzurufen für Datum: {heute}")
+    
+    org_id = "b993a325-6d34-4af5-a955-3d0b5e07cd47"
+    url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId={org_id}"
+    
+    # Zeige die URL kurz an, damit du sie kopieren kannst
+    st.write(f"Debug URL: {url}")
 
 else:
     # --- Dashboard ---
