@@ -8,7 +8,7 @@ st.set_page_config(page_title="Fahrer-Portal", layout="wide")
 # Hier kannst du beliebig viele IDs und deren Passwörter hinterlegen
 FAHRER_LOGINS = {
     "13292": "passwort123",
-    "12345": "geheimnis",
+    "9848": "geheimnis",
     "10004": "yokya"
 }
 
