@@ -4,9 +4,9 @@ import time
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
-# Deine Supabase-Daten (Bleiben für dein Projekt immer gleich)
+# Deine Supabase-Daten
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
-SUPABASE_KEY = "sb_publishable_2ylpUDTGGT9CfcW-75nwDg_j6ChU" # Setze hier deinen vollen Publishable Key ein
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" # <--- HIER DEINEN KEY EINTRAGEN
 
 st.set_page_config(page_title="Fahrer-App", layout="centered", initial_sidebar_state="collapsed")
 
@@ -59,4 +59,24 @@ if not st.session_state.logged_in:
                 user_data = response[0]
                 st.session_state.logged_in = True
                 st.session_state.driver_id = str(uid)
-                # Holt das Feld 'name' ab. Wenn keines da ist, wird 'Fahrer' als Standard
+                st.session_state.driver_name = user_data.get('name', 'Fahrer')
+                st.rerun()
+            else:
+                st.error("ID oder Passwort falsch.")
+        except Exception as e:
+            st.error("Fehler bei der Verbindung zur Datenbank.")
+            
+# --- FAHRER-DASHBOARD ---
+else:
+    # Ausloggen-Button in der ausklappbaren Sidebar links platzieren
+    with st.sidebar:
+        if st.button("🚪 Ausloggen"):
+            st.session_state.logged_in = False
+            st.session_state.driver_id = ""
+            st.session_state.driver_name = ""
+            st.rerun()
+            
+    # Begrüßung des Fahrers ganz oben
+    st.subheader(f"Hallo {st.session_state.driver_name} 👋")
+    
+    #
