@@ -30,7 +30,8 @@ TRANSLATIONS = {
 lang = st.sidebar.selectbox("Sprache / Language", list(TRANSLATIONS.keys()))
 t = TRANSLATIONS[lang]
 
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
+if "logged_in" not in st.session_state: 
+    st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
     st.title("🚛 Login")
@@ -41,72 +42,82 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.rerun()
 else:
-    heute = "2026-06-09" # Festes Datum zum Testen
+    # --- HIER IST DIE ÄNDERUNG: Dynamisches aktuelles Datum ---
+    heute = datetime.now().strftime('%Y-%m-%d') 
+    
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/13292/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
     
     try:
-        data = requests.get(url).json()
-        for route in data.get("routes", []):
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            routes = data.get("routes", [])
             
-            # Statistik Leiste
-            gesamt = route.get("numTotalOrders", 0)
-            erledigt = route.get("numDeliveredOrders", 0)
-            st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {gesamt}</div><div>{t["Geliefert"]}: {erledigt}</div></div>', unsafe_allow_html=True)
-            
-            html_list = ""
-            for cp in route.get("checkpoints", []):
-                an_str = cp.get('realArrivalTime')
-                plan_str = cp.get('plannedArrivalTime')
-                start_str = cp.get('deliverSince')
-                ende_str = cp.get('deliverTill')
+            if not routes:
+                st.info(f"Keine Touren für heute ({heute}) gefunden.")
                 
-                status_text = t["Offen"]
-                color = "gray"
-                ist_time = "--:--"
+            for route in routes:
+                # Statistik Leiste
+                gesamt = route.get("numTotalOrders", 0)
+                erledigt = route.get("numDeliveredOrders", 0)
+                st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {gesamt}</div><div>{t["Geliefert"]}: {erledigt}</div></div>', unsafe_allow_html=True)
                 
-                # Berechnung nur basierend auf Zeitfenster
-                if an_str and start_str and ende_str:
-                    ist_time = an_str[11:16]
-                    try:
-                        an = datetime.fromisoformat(an_str.replace("Z", "+00:00"))
-                        start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                        ende = datetime.fromisoformat(ende_str.replace("Z", "+00:00"))
-                        
-                        if an < start:
-                            # Zu früh geliefert
-                            diff = int((start - an).total_seconds() / 60)
-                            status_text = f"{diff} {t['Früh']}"
-                            color = "#0056b3" # Blau
-                        elif an > ende:
-                            # Zu spät geliefert
-                            diff = int((an - ende).total_seconds() / 60)
-                            status_text = f"{diff} {t['Spät']}"
-                            color = "#dc3545" # Rot
-                        else:
-                            # Genau im Zeitfenster
-                            status_text = t["Pünktlich"]
-                            color = "#28a745" # Grün
-                    except Exception:
-                        pass
-                
-                # HTML Output für jeden Stopp
-                html_list += f"""
-                <div class="stop-card" style="border-left: 5px solid {color};">
-                    <div class="stop-info">
-                        <div class="stop-address">{cp.get('address')}</div>
-                        <div class="stop-times">
-                            {t['Fenster']}: {start_str[11:16] if start_str else '--'}-{ende_str[11:16] if ende_str else '--'} &nbsp;|&nbsp; 
-                            {t['Plan']}: {plan_str[11:16] if plan_str else '--'} &nbsp;|&nbsp; 
-                            {t['Ist']}: <b>{ist_time}</b>
+                html_list = ""
+                for cp in route.get("checkpoints", []):
+                    an_str = cp.get('realArrivalTime')
+                    plan_str = cp.get('plannedArrivalTime')
+                    start_str = cp.get('deliverSince')
+                    ende_str = cp.get('deliverTill')
+                    
+                    status_text = t["Offen"]
+                    color = "gray"
+                    ist_time = "--:--"
+                    
+                    # Berechnung nur basierend auf Zeitfenster
+                    if an_str and start_str and ende_str:
+                        ist_time = an_str[11:16]
+                        try:
+                            an = datetime.fromisoformat(an_str.replace("Z", "+00:00"))
+                            start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                            ende = datetime.fromisoformat(ende_str.replace("Z", "+00:00"))
+                            
+                            if an < start:
+                                # Zu früh geliefert (Differenz zum Startfenster)
+                                diff = int((start - an).total_seconds() / 60)
+                                status_text = f"{diff} {t['Früh']}"
+                                color = "#0056b3" # Blau
+                            elif an > ende:
+                                # Zu spät geliefert (Differenz zum Endfenster)
+                                diff = int((an - ende).total_seconds() / 60)
+                                status_text = f"{diff} {t['Spät']}"
+                                color = "#dc3545" # Rot
+                            else:
+                                # Genau im Zeitfenster
+                                status_text = t["Pünktlich"]
+                                color = "#28a745" # Grün
+                        except Exception:
+                            pass
+                    
+                    # HTML Output für jeden Stopp
+                    html_list += f"""
+                    <div class="stop-card" style="border-left: 5px solid {color};">
+                        <div class="stop-info">
+                            <div class="stop-address">{cp.get('address')}</div>
+                            <div class="stop-times">
+                                {t['Fenster']}: {start_str[11:16] if start_str else '--'}-{ende_str[11:16] if ende_str else '--'} &nbsp;|&nbsp; 
+                                {t['Plan']}: {plan_str[11:16] if plan_str else '--'} &nbsp;|&nbsp; 
+                                {t['Ist']}: <b>{ist_time}</b>
+                            </div>
+                        </div>
+                        <div class="stop-status" style="color: {color};">
+                            {status_text}
                         </div>
                     </div>
-                    <div class="stop-status" style="color: {color};">
-                        {status_text}
-                    </div>
-                </div>
-                """
-            
-            st.markdown(html_list, unsafe_allow_html=True)
+                    """
+                
+                st.markdown(html_list, unsafe_allow_html=True)
+        else:
+            st.error("Verbindung zur Datenbank fehlgeschlagen.")
             
     except Exception as e:
-        st.error("Fehler beim Laden der Daten.")
+        st.error(f"Fehler beim Laden der Daten: {e}")
