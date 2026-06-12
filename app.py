@@ -4,8 +4,8 @@ import time
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
-SUPABASE_URL = "DEINE_SUPABASE_URL_HIER"
-SUPABASE_KEY = "DEIN_ANON_KEY_HIER"
+SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" # Hier den ganzen Schlüssel einfügen
 
 st.set_page_config(page_title="Fahrer-App", layout="centered", initial_sidebar_state="collapsed")
 
