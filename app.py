@@ -3,9 +3,10 @@ import requests
 import time
 from datetime import datetime, timedelta
 
-# --- KONFIGURATION (HIER DEINE DATEN EINTRAGEN) ---
+# --- KONFIGURATION ---
+# Deine Supabase-Daten (Bleiben für dein Projekt immer gleich)
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
-SUPABASE_KEY = "DEIN_ANON_KEY_HIER" # Den Publishable Key aus dem API-Tab
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGT9CfcW-75nwDg_j6ChU" # Setze hier deinen vollen Publishable Key ein
 
 st.set_page_config(page_title="Fahrer-App", layout="centered", initial_sidebar_state="collapsed")
 
@@ -21,7 +22,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Übersetzungen
+# Übersetzungen für das Dashboard
 TRANSLATIONS = {
     "Deutsch": {"Stopps": "Stopps", "Geliefert": "Geliefert", "Fenster": "Fenster", "Plan": "Plan", "Ist": "Ist", "Früh": "min früh", "Pünktlich": "Pünktlich", "Spät": "min spät", "Offen": "Offen"},
     "English": {"Stopps": "Stops", "Geliefert": "Delivered", "Fenster": "Window", "Plan": "Plan", "Ist": "Actual", "Früh": "min early", "Pünktlich": "On time", "Spät": "min late", "Offen": "Open"},
@@ -30,78 +31,32 @@ TRANSLATIONS = {
     "العربية": {"Stopps": "توقف", "Geliefert": "تم التوصيل", "Fenster": "نافذة", "Plan": "خطة", "Ist": "فعلي", "Früh": "دقيقة مبكر", "Pünktlich": "في الموعد", "Spät": "دقيقة متأخر", "Offen": "مفتوح"}
 }
 
+# Hilfsfunktion für die Zeitkorrektur um +2 Stunden
 def fix_time(time_str):
     if not time_str: return None
     clean_str = time_str.replace("Z", "").split("+")[0]
     return datetime.fromisoformat(clean_str) + timedelta(hours=2)
 
-# Login-Zustand
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
+# Überprüfen des Login-Status im Session State
+if "logged_in" not in st.session_state: 
+    st.session_state.logged_in = False
 
+# --- ANMELDE-FENSTER ---
 if not st.session_state.logged_in:
     st.title("🚛 Fahrer-Login")
     uid = st.text_input("Fahrer-ID")
     pwd = st.text_input("Passwort", type="password")
+    
     if st.button("Anmelden"):
-        # Login gegen Supabase
+        # Abfrage an deine 'drivers' Tabelle in Supabase
         url = f"{SUPABASE_URL}/rest/v1/drivers?id=eq.{uid}&passwort=eq.{pwd}"
         headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
-        response = requests.get(url, headers=headers).json()
         
-        if response:
-            st.session_state.logged_in = True
-            st.session_state.driver_id = uid
-            st.session_state.driver_name = response[0]['name']
-            st.rerun()
-        else:
-            st.error("ID oder Passwort falsch.")
-else:
-    # Sidebar für Logout
-    with st.sidebar:
-        if st.button("🚪 Ausloggen"):
-            st.session_state.logged_in = False
-            st.rerun()
-    
-    st.subheader(f"Hallo {st.session_state.driver_name} 👋")
-    lang = st.sidebar.selectbox("Sprache", list(TRANSLATIONS.keys()))
-    t = TRANSLATIONS[lang]
-    
-    heute = datetime.now().strftime('%Y-%m-%d')
-    url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
-    
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            for route in data.get("routes", []):
-                st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {route.get("numTotalOrders")}</div><div>{t["Geliefert"]}: {route.get("numDeliveredOrders")}</div></div>', unsafe_allow_html=True)
-                
-                html_list = ""
-                for cp in route.get("checkpoints", []):
-                    an = fix_time(cp.get('realArrivalTime'))
-                    start = fix_time(cp.get('deliverSince'))
-                    ende = fix_time(cp.get('deliverTill'))
-                    plan = fix_time(cp.get('plannedArrivalTime'))
-                    
-                    status_text = t["Offen"]; color = "gray"
-                    if an and start and ende:
-                        if an < start:
-                            diff = int((start - an).total_seconds() / 60)
-                            status_text = f"{diff} {t['Früh']}"; color = "#0056b3"
-                        elif an > ende:
-                            diff = int((an - ende).total_seconds() / 60)
-                            status_text = f"{diff} {t['Spät']}"; color = "#dc3545"
-                        else:
-                            status_text = t["Pünktlich"]; color = "#28a745"
-                    
-                    html_list += f"""
-                    <div class="stop-card" style="border-left: 5px solid {color};">
-                        <div class="stop-address">{cp.get('address')}</div>
-                        <div class="stop-times">{t['Fenster']}: {start.strftime("%H:%M")}-{ende.strftime("%H:%M")} | {t['Ist']}: <b>{an.strftime("%H:%M") if an else '--'}</b></div>
-                        <div class="stop-status" style="color: {color};">{status_text}</div>
-                    </div>
-                    """
-                st.markdown(html_list, unsafe_allow_html=True)
-        time.sleep(60); st.rerun()
-    except Exception as e:
-        st.error(f"Fehler beim Laden: {e}")
+        try:
+            response = requests.get(url, headers=headers).json()
+            
+            if response: # Wenn ein Eintrag gefunden wurde
+                user_data = response[0]
+                st.session_state.logged_in = True
+                st.session_state.driver_id = str(uid)
+                # Holt das Feld 'name' ab. Wenn keines da ist, wird 'Fahrer' als Standard
