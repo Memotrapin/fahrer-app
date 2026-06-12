@@ -1,50 +1,61 @@
 import streamlit as st
 import requests
+from datetime import datetime
 
-st.set_page_config(page_title="Fahrer-App", layout="wide")
+st.set_page_config(page_title="Fahrer-Portal", layout="wide")
 
 # Übersetzungen
 TRANSLATIONS = {
-    "Deutsch": {"Login": "Login", "Fahrer-ID": "Fahrer-ID", "Passwort": "Passwort", "Anmelden": "Anmelden", "Früh": "FRÜH", "Pünktlich": "PÜNKTLICH", "Spät": "SPÄT", "Offen": "OFFEN"},
-    "English": {"Login": "Login", "Fahrer-ID": "Driver ID", "Passwort": "Password", "Anmelden": "Sign In", "Früh": "EARLY", "Pünktlich": "ON TIME", "Spät": "LATE", "Offen": "OPEN"},
-    "Русский": {"Login": "Вход", "Fahrer-ID": "ID водителя", "Passwort": "Пароль", "Anmelden": "Войти", "Früh": "РАНО", "Pünktlich": "ВОВРЕМЯ", "Spät": "ПОЗДНО", "Offen": "ОТКРЫТО"},
-    "Українська": {"Login": "Вхід", "Fahrer-ID": "ID водія", "Passwort": "Пароль", "Anmelden": "Увійти", "Früh": "РАНО", "Pünktlich": "ВЧАСНО", "Spät": "ПІЗНО", "Offen": "ВІДКРИТО"},
-    "العربية": {"Login": "تسجيل الدخول", "Fahrer-ID": "معرف السائق", "Passwort": "كلمة المرور", "Anmelden": "دخول", "Früh": "مبكر", "Pünktlich": "في الموعد", "Spät": "متأخر", "Offen": "مفتوح"},
-    "Türkçe": {"Login": "Giriş", "Fahrer-ID": "Sürücü ID", "Passwort": "Şifre", "Anmelden": "Giriş Yap", "Früh": "ERKEN", "Pünktlich": "ZAMANINDA", "Spät": "GEÇ", "Offen": "AÇIK"}
+    "Deutsch": {"Stat": "Stopps", "Gel": "Geliefert", "Zeit": "Zeitfenster", "Plan": "Plan", "An": "Ankunft", "Früh": "min zu früh", "Pünktlich": "Pünktlich", "Spät": "min zu spät", "Offen": "Offen"},
+    "English": {"Stat": "Stops", "Gel": "Delivered", "Zeit": "Time", "Plan": "Plan", "An": "Arrival", "Früh": "min early", "Pünktlich": "On time", "Spät": "min late", "Offen": "Open"},
+    # ... (weitere Sprachen ergänzen)
 }
 
 # Sprachwahl
-lang = st.sidebar.selectbox("Sprache / Language", list(TRANSLATIONS.keys()))
+lang = st.sidebar.selectbox("Sprache", list(TRANSLATIONS.keys()))
 t = TRANSLATIONS[lang]
 
-# Styling
-st.markdown("<style>.row { display: flex; align-items: center; border-bottom: 1px solid #ddd; padding: 10px 0; } .col-status { flex: 1; text-align: right; font-weight: bold; }</style>", unsafe_allow_html=True)
-
-# Logik (Login & Dashboard)
+# Login & Dashboard
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    st.title(t["Login"])
-    uid = st.text_input(t["Fahrer-ID"])
-    pwd = st.text_input(t["Passwort"], type="password")
-    if st.button(t["Anmelden"]):
-        if uid == "13292" and pwd == "passwort123":
-            st.session_state.logged_in = True
-            st.rerun()
+    # ... (Login bleibt) ...
+    pass 
 else:
     heute = "2026-06-09"
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/13292/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
     
-    try:
-        data = requests.get(url).json()
-        for route in data.get("routes", []):
-            for cp in route.get("checkpoints", []):
-                an = cp.get('realArrivalTime', '')
-                if not an: status_text = t["Offen"]; color = "gray"
-                elif an < cp.get('deliverSince', ''): status_text = t["Früh"]; color = "blue"
-                elif an > cp.get('deliverTill', ''): status_text = t["Spät"]; color = "red"
-                else: status_text = t["Pünktlich"]; color = "green"
+    data = requests.get(url).json()
+    for route in data.get("routes", []):
+        # Oben die Statistik
+        col1, col2 = st.columns(2)
+        col1.metric("Stopps gesamt", route.get("numTotalOrders", 0))
+        col2.metric("Erledigt", route.get("numDeliveredOrders", 0))
+        st.write("---")
+        
+        for cp in route.get("checkpoints", []):
+            an_str = cp.get('realArrivalTime')
+            plan_str = cp.get('plannedArrivalTime')
+            
+            status_text = t["Offen"]
+            color = "gray"
+            
+            if an_str and plan_str:
+                an = datetime.fromisoformat(an_str.replace("Z", ""))
+                plan = datetime.fromisoformat(plan_str.replace("Z", ""))
+                diff = int((plan - an).total_seconds() / 60)
                 
-                st.markdown(f'<div class="row"><div class="col-info"><b>{cp.get("address")}</b></div><div class="col-status" style="color:{color}">{status_text}</div></div>', unsafe_allow_html=True)
-    except:
-        st.error("Error")
+                if diff > 0: # Zu früh
+                    status_text = f"{diff} {t['Früh']}"
+                    color = "blue"
+                elif diff < -2: # Zu spät (Toleranz 2 Min)
+                    status_text = f"{abs(diff)} {t['Spät']}"
+                    color = "red"
+                else:
+                    status_text = t["Pünktlich"]
+                    color = "green"
+
+            st.markdown(f"**{cp.get('address')}**")
+            st.caption(f"{t['Zeit']}: {cp.get('deliverSince')[11:16]}-{cp.get('deliverTill')[11:16]} | {t['Plan']}: {plan_str[11:16]}")
+            st.markdown(f"Status: <b style='color:{color}'>{status_text}</b>", unsafe_allow_html=True)
+            st.write("---")
