@@ -53,4 +53,57 @@ else:
             erledigt = route.get("numDeliveredOrders", 0)
             st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {gesamt}</div><div>{t["Geliefert"]}: {erledigt}</div></div>', unsafe_allow_html=True)
             
-            # ---
+            # --- 2. KOMPAKTE STOPP-LISTE (ALLES IN HTML) ---
+            html_list = ""
+            for cp in route.get("checkpoints", []):
+                an_str = cp.get('realArrivalTime')
+                plan_str = cp.get('plannedArrivalTime')
+                start_str = cp.get('deliverSince', 'T00:00')
+                ende_str = cp.get('deliverTill', 'T00:00')
+                
+                status_text = t["Offen"]
+                color = "gray"
+                ist_time = "--:--"
+                
+                # Zeit-Differenz berechnen (Plan vs. Ist)
+                if an_str and plan_str:
+                    ist_time = an_str[11:16]
+                    try:
+                        an = datetime.fromisoformat(an_str.replace("Z", "+00:00"))
+                        plan = datetime.fromisoformat(plan_str.replace("Z", "+00:00"))
+                        diff = int((plan - an).total_seconds() / 60)
+                        
+                        if diff > 0: # Zu früh
+                            status_text = f"{diff} {t['Früh']}"
+                            color = "#0056b3" # Blau
+                        elif diff < 0: # Zu spät
+                            status_text = f"{abs(diff)} {t['Spät']}"
+                            color = "#dc3545" # Rot
+                        else:
+                            status_text = t["Pünktlich"]
+                            color = "#28a745" # Grün
+                    except:
+                        pass
+                
+                # Jeder Stopp ist eine eng gepackte Zeile
+                html_list += f"""
+                <div class="stop-card" style="border-left: 5px solid {color};">
+                    <div class="stop-info">
+                        <div class="stop-address">{cp.get('address')}</div>
+                        <div class="stop-times">
+                            {t['Fenster']}: {start_str[11:16]}-{ende_str[11:16]} &nbsp;|&nbsp; 
+                            {t['Plan']}: {plan_str[11:16] if plan_str else '--'} &nbsp;|&nbsp; 
+                            {t['Ist']}: <b>{ist_time}</b>
+                        </div>
+                    </div>
+                    <div class="stop-status" style="color: {color};">
+                        {status_text}
+                    </div>
+                </div>
+                """
+            
+            # Die komplette Liste als einen einzigen kompakten Block ausgeben
+            st.markdown(html_list, unsafe_allow_html=True)
+            
+    except Exception as e:
+        st.error("Fehler beim Laden der Daten.")
