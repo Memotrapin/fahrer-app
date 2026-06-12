@@ -5,7 +5,7 @@ from datetime import datetime
 # Streamlit zwingen, den Platz komplett zu nutzen
 st.set_page_config(page_title="Fahrer-App", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS: Schmeißt alle ungenutzten Flächen und Abstände raus ---
+# --- CSS für ein extrem kompaktes Design ---
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 1rem; padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -48,50 +48,54 @@ else:
         data = requests.get(url).json()
         for route in data.get("routes", []):
             
-            # --- 1. KOMPAKTE STATISTIK GANZ OBEN ---
+            # Statistik Leiste
             gesamt = route.get("numTotalOrders", 0)
             erledigt = route.get("numDeliveredOrders", 0)
             st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {gesamt}</div><div>{t["Geliefert"]}: {erledigt}</div></div>', unsafe_allow_html=True)
             
-            # --- 2. KOMPAKTE STOPP-LISTE (ALLES IN HTML) ---
             html_list = ""
             for cp in route.get("checkpoints", []):
                 an_str = cp.get('realArrivalTime')
                 plan_str = cp.get('plannedArrivalTime')
-                start_str = cp.get('deliverSince', 'T00:00')
-                ende_str = cp.get('deliverTill', 'T00:00')
+                start_str = cp.get('deliverSince')
+                ende_str = cp.get('deliverTill')
                 
                 status_text = t["Offen"]
                 color = "gray"
                 ist_time = "--:--"
                 
-                # Zeit-Differenz berechnen (Plan vs. Ist)
-                if an_str and plan_str:
+                # Berechnung nur basierend auf Zeitfenster
+                if an_str and start_str and ende_str:
                     ist_time = an_str[11:16]
                     try:
                         an = datetime.fromisoformat(an_str.replace("Z", "+00:00"))
-                        plan = datetime.fromisoformat(plan_str.replace("Z", "+00:00"))
-                        diff = int((plan - an).total_seconds() / 60)
+                        start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                        ende = datetime.fromisoformat(ende_str.replace("Z", "+00:00"))
                         
-                        if diff > 0: # Zu früh
+                        if an < start:
+                            # Zu früh geliefert
+                            diff = int((start - an).total_seconds() / 60)
                             status_text = f"{diff} {t['Früh']}"
                             color = "#0056b3" # Blau
-                        elif diff < 0: # Zu spät
-                            status_text = f"{abs(diff)} {t['Spät']}"
+                        elif an > ende:
+                            # Zu spät geliefert
+                            diff = int((an - ende).total_seconds() / 60)
+                            status_text = f"{diff} {t['Spät']}"
                             color = "#dc3545" # Rot
                         else:
+                            # Genau im Zeitfenster
                             status_text = t["Pünktlich"]
                             color = "#28a745" # Grün
-                    except:
+                    except Exception:
                         pass
                 
-                # Jeder Stopp ist eine eng gepackte Zeile
+                # HTML Output für jeden Stopp
                 html_list += f"""
                 <div class="stop-card" style="border-left: 5px solid {color};">
                     <div class="stop-info">
                         <div class="stop-address">{cp.get('address')}</div>
                         <div class="stop-times">
-                            {t['Fenster']}: {start_str[11:16]}-{ende_str[11:16]} &nbsp;|&nbsp; 
+                            {t['Fenster']}: {start_str[11:16] if start_str else '--'}-{ende_str[11:16] if ende_str else '--'} &nbsp;|&nbsp; 
                             {t['Plan']}: {plan_str[11:16] if plan_str else '--'} &nbsp;|&nbsp; 
                             {t['Ist']}: <b>{ist_time}</b>
                         </div>
@@ -102,7 +106,6 @@ else:
                 </div>
                 """
             
-            # Die komplette Liste als einen einzigen kompakten Block ausgeben
             st.markdown(html_list, unsafe_allow_html=True)
             
     except Exception as e:
