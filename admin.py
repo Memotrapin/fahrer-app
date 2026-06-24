@@ -5,7 +5,7 @@ from datetime import datetime
 
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
-SUPABASE_KEY = "DEIN_LANGER_PUBLISHABLE_KEY_HIER" # <--- HIER DEINEN KEY EINTRAGEN
+SUPABASE_KEY = "sb_secret_eHssYJbF5n2ExlFI7lMpRA_oIVGQAA7" # <--- HIER DEINEN KEY EINTRAGEN
 
 # Admin-Dashboard nutzt die volle Bildschirmbreite (layout="wide")
 st.set_page_config(page_title="Admin Dashboard", layout="wide")
