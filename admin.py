@@ -5,25 +5,21 @@ from datetime import datetime
 
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
-SUPABASE_KEY = "sb_secret_eHssYJbF5n2ExlFI7lMpRA_oIVGQAA7" # <--- HIER DEINEN KEY EINTRAGEN
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" # <--- HIER DEINEN KEY EINTRAGEN
 
-# Admin-Dashboard nutzt die volle Bildschirmbreite (layout="wide")
+# Admin-Dashboard nutzt die volle Bildschirmbreite
 st.set_page_config(page_title="Admin Dashboard", layout="wide")
 
-st.title("📊 Zentrales Admin-Dashboard")
-heute = datetime.now().strftime('%Y-%m-%d')
-st.subheader(f"Tagesübersicht für den {heute}")
-
-# --- DATEN ABRUFEN ---
-@st.cache_data(ttl=60) # Speichert die Daten für 60 Sekunden zwischen, damit es schneller lädt
+# --- FUNKTIONEN ---
+# Wir definieren die Lade-Funktion ganz oben
+@st.cache_data(ttl=60)
 def load_all_driver_data():
-    # 1. Alle Fahrer aus deiner Supabase 'drivers' Tabelle holen
     drivers_url = f"{SUPABASE_URL}/rest/v1/drivers?select=id,name"
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     
     try:
         drivers_response = requests.get(drivers_url, headers=headers).json()
-    except Exception as e:
+    except Exception:
         st.error("Konnte Fahrer nicht aus der Datenbank laden.")
         return []
 
@@ -31,14 +27,12 @@ def load_all_driver_data():
         return []
 
     admin_data = []
-    
-    # Ladebalken für den Admin
     progress_text = "Lade Tourdaten der Fahrer..."
     my_bar = st.progress(0, text=progress_text)
-    
     total_drivers = len(drivers_response)
 
-    # 2. Für jeden Fahrer die Tourdaten vom Server abfragen
+    heute = datetime.now().strftime('%Y-%m-%d')
+
     for index, driver in enumerate(drivers_response):
         d_id = driver.get('id')
         d_name = driver.get('name', 'Unbekannt')
@@ -58,7 +52,6 @@ def load_all_driver_data():
                     gesamt_stopps += route.get("numTotalOrders", 0)
                     geliefert += route.get("numDeliveredOrders", 0)
                 
-                # Nur Fahrer anzeigen, die heute eine Tour haben (oder alle, je nachdem was du willst)
                 status = "Aktiv" if gesamt_stopps > 0 else "Keine Tour"
                 
                 admin_data.append({
@@ -69,51 +62,80 @@ def load_all_driver_data():
                     "Offen": gesamt_stopps - geliefert,
                     "Status": status
                 })
-        except Exception as e:
-            pass # Wenn ein Fehler bei einem Fahrer auftritt, einfach zum nächsten gehen
+        except Exception:
+            pass 
         
-        # Ladebalken aktualisieren
         my_bar.progress((index + 1) / total_drivers, text=f"Lade Daten für {d_name}...")
 
-    my_bar.empty() # Ladebalken entfernen, wenn fertig
+    my_bar.empty()
     return admin_data
 
-# --- ANZEIGE IM DASHBOARD ---
-if st.button("🔄 Daten jetzt aktualisieren"):
-    st.cache_data.clear() # Löscht den Zwischenspeicher und lädt hart neu
-    st.rerun()
 
-st.write("---")
+# --- LOGIN STATUS PRÜFEN ---
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
 
-data = load_all_driver_data()
+# --- LOGIN BEREICH ---
+if not st.session_state.admin_logged_in:
+    st.title("🔐 Admin-Login")
+    st.markdown("Bitte melde dich an, um auf das zentrale Dashboard zuzugreifen.")
+    
+    admin_id = st.text_input("Admin-ID")
+    admin_pwd = st.text_input("Passwort", type="password")
+    
+    if st.button("Anmelden"):
+        # Hier sind deine Zugangsdaten hinterlegt
+        if admin_id == "99999" and admin_pwd == "3300":
+            st.session_state.admin_logged_in = True
+            st.rerun()
+        else:
+            st.error("ID oder Passwort falsch!")
 
-if data:
-    # Daten in eine saubere Tabelle (Pandas DataFrame) umwandeln
-    df = pd.DataFrame(data)
-    
-    # 1. Kennzahlen ganz oben anzeigen
-    stopps_total = df["Gesamt Stopps"].sum()
-    geliefert_total = df["Geliefert"].sum()
-    offen_total = df["Offen"].sum()
-    aktive_fahrer = len(df[df["Status"] == "Aktiv"])
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Fahrer im Einsatz", aktive_fahrer)
-    col2.metric("Stopps Gesamt", stopps_total)
-    col3.metric("Geliefert", geliefert_total)
-    col4.metric("Noch Offen", offen_total)
-    
-    st.write("---")
-    
-    # 2. Große, interaktive Tabelle anzeigen
-    # Wir sortieren nach offenen Stopps, damit du siehst, wer noch am meisten zu tun hat
-    df_sorted = df.sort_values(by="Offen", ascending=False)
-    
-    # Tabelle formatieren, sodass sie die ganze Breite einnimmt
-    st.dataframe(
-        df_sorted, 
-        use_container_width=True,
-        hide_index=True # Versteckt die unnötige Nummerierung links
-    )
+# --- DASHBOARD BEREICH ---
 else:
-    st.info("Keine Daten gefunden. Haben die Fahrer heute überhaupt Touren?")
+    # Sidebar mit Logout-Button
+    with st.sidebar:
+        st.subheader("Admin Menü")
+        if st.button("🚪 Ausloggen"):
+            st.session_state.admin_logged_in = False
+            st.rerun()
+
+    # Dashboard Header
+    st.title("📊 Zentrales Admin-Dashboard")
+    heute_anzeige = datetime.now().strftime('%d.%m.%Y')
+    st.subheader(f"Tagesübersicht für den {heute_anzeige}")
+
+    if st.button("🔄 Daten jetzt aktualisieren"):
+        st.cache_data.clear() 
+        st.rerun()
+
+    st.write("---")
+
+    # Daten laden und anzeigen
+    data = load_all_driver_data()
+
+    if data:
+        df = pd.DataFrame(data)
+        
+        stopps_total = df["Gesamt Stopps"].sum()
+        geliefert_total = df["Geliefert"].sum()
+        offen_total = df["Offen"].sum()
+        aktive_fahrer = len(df[df["Status"] == "Aktiv"])
+        
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Fahrer im Einsatz", aktive_fahrer)
+        col2.metric("Stopps Gesamt", stopps_total)
+        col3.metric("Geliefert", geliefert_total)
+        col4.metric("Noch Offen", offen_total)
+        
+        st.write("---")
+        
+        df_sorted = df.sort_values(by="Offen", ascending=False)
+        
+        st.dataframe(
+            df_sorted, 
+            use_container_width=True,
+            hide_index=True 
+        )
+    else:
+        st.info("Keine Daten gefunden. Haben die Fahrer heute überhaupt Touren?")
