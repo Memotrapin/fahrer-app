@@ -8,8 +8,6 @@ SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
 # TRAGE HIER DEINEN ECHTEN KEY EIN:
 SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" 
 
-# Wir nutzen "wide", damit das Admin-Dashboard auf dem PC gut aussieht. 
-# Auf dem Handy passt es sich trotzdem automatisch an.
 st.set_page_config(page_title="Fahrer & Admin App", layout="wide", initial_sidebar_state="collapsed")
 
 # --- CSS FÜR HANDY-OPTIMIERUNG (Fahrer) ---
@@ -24,7 +22,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Übersetzungen für das Fahrer-Dashboard
+# Übersetzungen 
 TRANSLATIONS = {
     "Deutsch": {"Stopps": "Stopps", "Geliefert": "Geliefert", "Fenster": "Fenster", "Plan": "Plan", "Ist": "Ist", "Früh": "min früh", "Pünktlich": "Pünktlich", "Spät": "min spät", "Offen": "Offen"},
     "English": {"Stopps": "Stops", "Geliefert": "Delivered", "Fenster": "Window", "Plan": "Plan", "Ist": "Actual", "Früh": "min early", "Pünktlich": "On time", "Spät": "min late", "Offen": "Open"},
@@ -83,26 +81,30 @@ if "role" not in st.session_state:
 
 # --- LOGIN BEREICH ---
 if not st.session_state.logged_in:
-    st.title("🚛 Fahrer & Admin Login")
+    # HIER IST DIE TEST-ÜBERSCHRIFT:
+    st.title("🚛 Login (Test-Version)")
     uid = st.text_input("ID")
     pwd = st.text_input("Passwort", type="password")
     
     if st.button("Anmelden"):
+        clean_uid = uid.strip()
+        clean_pwd = pwd.strip()
+        
         # 1. Prüfen, ob es der Admin ist
-        if uid == "99999" and pwd == "3300":
+        if clean_uid == "99999" and clean_pwd == "3300":
             st.session_state.logged_in = True
             st.session_state.role = "admin"
             st.rerun()
         else:
             # 2. Wenn nicht Admin, in Supabase nach Fahrer suchen
-            url = f"{SUPABASE_URL}/rest/v1/drivers?id=eq.{uid}&passwort=eq.{pwd}"
+            url = f"{SUPABASE_URL}/rest/v1/drivers?id=eq.{clean_uid}&passwort=eq.{clean_pwd}"
             headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
             try:
                 response = requests.get(url, headers=headers).json()
                 if response:
                     st.session_state.logged_in = True
                     st.session_state.role = "driver"
-                    st.session_state.driver_id = str(uid)
+                    st.session_state.driver_id = str(clean_uid)
                     st.session_state.driver_name = response[0].get('name', 'Fahrer')
                     st.rerun()
                 else:
