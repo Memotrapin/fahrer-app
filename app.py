@@ -44,13 +44,25 @@ def fetch_single_driver_data(driver, heute):
         res = requests.get(tour_url, timeout=5)
         if res.status_code == 200:
             data = res.json()
-            gesamt_stopps = sum(r.get("numTotalOrders", 0) for r in data.get("routes", []))
-            geliefert = sum(r.get("numDeliveredOrders", 0) for r in data.get("routes", []))
+            routes = data.get("routes", [])
+            anzahl_touren = len(routes)
+            gesamt_stopps = sum(r.get("numTotalOrders", 0) for r in routes)
+            geliefert = sum(r.get("numDeliveredOrders", 0) for r in routes)
             status = "Aktiv" if gesamt_stopps > 0 else "Keine Tour"
-            return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": gesamt_stopps, "Geliefert": geliefert, "Offen": gesamt_stopps - geliefert, "Status": status}
+            
+            return {
+                "Fahrer-ID": d_id, 
+                "Name": d_name, 
+                "Touren": anzahl_touren,  # <-- NEUE SPALTE HIER
+                "Gesamt Stopps": gesamt_stopps, 
+                "Geliefert": geliefert, 
+                "Offen": gesamt_stopps - geliefert, 
+                "Status": status
+            }
     except Exception:
         pass
-    return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": 0, "Geliefert": 0, "Offen": 0, "Status": "Keine Tour"}
+    
+    return {"Fahrer-ID": d_id, "Name": d_name, "Touren": 0, "Gesamt Stopps": 0, "Geliefert": 0, "Offen": 0, "Status": "Keine Tour"}
 
 @st.cache_data(ttl=60)
 def load_all_driver_data():
@@ -140,23 +152,24 @@ elif st.session_state.role == "admin":
 
     if data:
         df = pd.DataFrame(data)
-        col1, col2, col3, col4 = st.columns(4)
+        
+        # --- KENNZAHLEN OBEN (Jetzt mit Touren!) ---
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Fahrer im Einsatz", len(df[df["Status"] == "Aktiv"]))
-        col2.metric("Stopps Gesamt", df["Gesamt Stopps"].sum())
-        col3.metric("Geliefert", df["Geliefert"].sum())
-        col4.metric("Noch Offen", df["Offen"].sum())
+        col2.metric("Touren Gesamt", df["Touren"].sum())
+        col3.metric("Stopps Gesamt", df["Gesamt Stopps"].sum())
+        col4.metric("Geliefert", df["Geliefert"].sum())
+        col5.metric("Noch Offen", df["Offen"].sum())
         
         st.write("---")
         st.markdown("👇 **Klicke auf eine Zeile in der linken Tabelle**, um die Details des Fahrers auf der rechten Seite zu sehen!")
         
-        # --- NEU: SPLIT-SCREEN LAYOUT ---
-        # Wir teilen den Bildschirm: 60% für die Tabelle, 40% für die Details
+        # Split-Screen Layout
         col_table, col_details = st.columns([1.5, 1]) 
         
         df_sorted = df.sort_values(by="Offen", ascending=False).reset_index(drop=True)
         
         with col_table:
-            # Interaktive Tabelle links
             event = st.dataframe(
                 df_sorted, 
                 use_container_width=True, 
@@ -169,7 +182,6 @@ elif st.session_state.role == "admin":
             selected_rows = event.selection.rows
             
             if selected_rows:
-                # Zeige Details rechts an
                 row_idx = selected_rows[0]
                 selected_id = df_sorted.iloc[row_idx]["Fahrer-ID"]
                 selected_name = df_sorted.iloc[row_idx]["Name"]
@@ -185,14 +197,18 @@ elif st.session_state.role == "admin":
                         if not routes:
                             st.warning("Dieser Fahrer hat heute keine Touren.")
                         else:
+                            drv_touren = len(routes)
                             drv_stopps = sum(r.get("numTotalOrders", 0) for r in routes)
                             drv_geliefert = sum(r.get("numDeliveredOrders", 0) for r in routes)
                             
-                            st.write(f"📦 **Stopps:** {drv_stopps} | ✅ **Geliefert:** {drv_geliefert} | ⏳ **Offen:** {drv_stopps - drv_geliefert}")
-                            st.write("") # Kleiner Abstand
+                            st.write(f"🚚 **Touren:** {drv_touren} | 📦 **Stopps:** {drv_stopps} | ✅ **Geliefert:** {drv_geliefert}")
+                            st.write("---") 
                             
-                            stops_data = []
-                            for route in routes:
+                            # --- NEU: TOUREN SAUBER TRENNEN ---
+                            for idx, route in enumerate(routes, start=1):
+                                st.markdown(f"**🚚 Tour {idx}**") # Überschrift für jede Tour
+                                
+                                stops_data = []
                                 for cp in route.get("checkpoints", []):
                                     an = fix_time(cp.get('realArrivalTime'))
                                     start = fix_time(cp.get('deliverSince'))
@@ -212,17 +228,21 @@ elif st.session_state.role == "admin":
                                         "Ist-Zeit": an.strftime('%H:%M') if an else "--",
                                         "Status": status_text
                                     })
-                            
-                            if stops_data:
-                                df_stops = pd.DataFrame(stops_data)
-                                st.dataframe(df_stops, use_container_width=True, hide_index=True)
+                                
+                                if stops_data:
+                                    df_stops = pd.DataFrame(stops_data)
+                                    st.dataframe(df_stops, use_container_width=True, hide_index=True)
+                                else:
+                                    st.write("Keine Stopp-Daten für diese Tour gefunden.")
+                                    
+                                st.write("") # Kleiner Platzhalter zwischen zwei Touren
+                                
                     else:
                         st.error("Details konnten nicht geladen werden.")
                 except Exception as e:
                      st.error(f"Fehler: {e}")
             else:
-                # Wenn noch niemand angeklickt wurde
-                st.info("👈 Bitte klicke links auf einen Fahrer, um hier seine Zeiten zu sehen.")
+                st.info("👈 Bitte klicke links auf einen Fahrer, um hier seine Zeiten und Touren zu sehen.")
 
     else:
         st.info("Keine Daten gefunden. Haben die Fahrer heute Touren?")
