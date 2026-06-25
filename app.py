@@ -11,7 +11,7 @@ SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP"
 
 st.set_page_config(page_title="Fahrer & Admin App", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS FÜR HANDY & KARTEN (Nur für Fahrer-Ansicht) ---
+# --- CSS FÜR HANDY & KARTEN ---
 st.markdown("""
     <style>
     .block-container { padding: 10px; }
@@ -147,83 +147,82 @@ elif st.session_state.role == "admin":
         col4.metric("Noch Offen", df["Offen"].sum())
         
         st.write("---")
-        st.markdown("👇 **Klicke auf eine Zeile in der Tabelle**, um die Details und Verspätungen des Fahrers zu sehen!")
+        st.markdown("👇 **Klicke auf eine Zeile in der linken Tabelle**, um die Details des Fahrers auf der rechten Seite zu sehen!")
+        
+        # --- NEU: SPLIT-SCREEN LAYOUT ---
+        # Wir teilen den Bildschirm: 60% für die Tabelle, 40% für die Details
+        col_table, col_details = st.columns([1.5, 1]) 
         
         df_sorted = df.sort_values(by="Offen", ascending=False).reset_index(drop=True)
         
-        # Interaktive Tabelle
-        event = st.dataframe(
-            df_sorted, 
-            use_container_width=True, 
-            hide_index=True,
-            on_select="rerun",           
-            selection_mode="single-row"  
-        )
+        with col_table:
+            # Interaktive Tabelle links
+            event = st.dataframe(
+                df_sorted, 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",           
+                selection_mode="single-row"  
+            )
         
-        selected_rows = event.selection.rows
-        
-        if selected_rows:
-            row_idx = selected_rows[0]
-            selected_id = df_sorted.iloc[row_idx]["Fahrer-ID"]
-            selected_name = df_sorted.iloc[row_idx]["Name"]
+        with col_details:
+            selected_rows = event.selection.rows
             
-            st.write("---")
-            st.subheader(f"🔍 Fahrer-Details: {selected_name}")
-            
-            detail_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{selected_id}/{heute_str}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
-            
-            try:
-                res_detail = requests.get(detail_url)
-                if res_detail.status_code == 200:
-                    routes = res_detail.json().get("routes", [])
-                    if not routes:
-                        st.info("Dieser Fahrer hat heute keine Touren geplant.")
+            if selected_rows:
+                # Zeige Details rechts an
+                row_idx = selected_rows[0]
+                selected_id = df_sorted.iloc[row_idx]["Fahrer-ID"]
+                selected_name = df_sorted.iloc[row_idx]["Name"]
+                
+                st.info(f"**🔍 Details für: {selected_name}**")
+                
+                detail_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{selected_id}/{heute_str}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
+                
+                try:
+                    res_detail = requests.get(detail_url)
+                    if res_detail.status_code == 200:
+                        routes = res_detail.json().get("routes", [])
+                        if not routes:
+                            st.warning("Dieser Fahrer hat heute keine Touren.")
+                        else:
+                            drv_stopps = sum(r.get("numTotalOrders", 0) for r in routes)
+                            drv_geliefert = sum(r.get("numDeliveredOrders", 0) for r in routes)
+                            
+                            st.write(f"📦 **Stopps:** {drv_stopps} | ✅ **Geliefert:** {drv_geliefert} | ⏳ **Offen:** {drv_stopps - drv_geliefert}")
+                            st.write("") # Kleiner Abstand
+                            
+                            stops_data = []
+                            for route in routes:
+                                for cp in route.get("checkpoints", []):
+                                    an = fix_time(cp.get('realArrivalTime'))
+                                    start = fix_time(cp.get('deliverSince'))
+                                    ende = fix_time(cp.get('deliverTill'))
+                                    
+                                    status_text = "⚪ Offen"
+                                    if an and start and ende:
+                                        if an < start:
+                                            status_text = f"🔵 Früh ({int((start - an).total_seconds() / 60)} min)"
+                                        elif an > ende:
+                                            status_text = f"🔴 Spät ({int((an - ende).total_seconds() / 60)} min)"
+                                        else:
+                                            status_text = "🟢 Pünktlich"
+                                    
+                                    stops_data.append({
+                                        "Adresse": cp.get("address", "Unbekannt"),
+                                        "Ist-Zeit": an.strftime('%H:%M') if an else "--",
+                                        "Status": status_text
+                                    })
+                            
+                            if stops_data:
+                                df_stops = pd.DataFrame(stops_data)
+                                st.dataframe(df_stops, use_container_width=True, hide_index=True)
                     else:
-                        # Fahrer-Statistik berechnen
-                        drv_stopps = sum(r.get("numTotalOrders", 0) for r in routes)
-                        drv_geliefert = sum(r.get("numDeliveredOrders", 0) for r in routes)
-                        drv_offen = drv_stopps - drv_geliefert
-                        
-                        # Kleine Übersicht für diesen einen Fahrer
-                        sc1, sc2, sc3 = st.columns(3)
-                        sc1.metric("📦 Stopps (Fahrer)", drv_stopps)
-                        sc2.metric("✅ Geliefert (Fahrer)", drv_geliefert)
-                        sc3.metric("⏳ Offen (Fahrer)", drv_offen)
-                        
-                        st.markdown("### 📍 Touren-Verlauf")
-                        
-                        # Saubere Tabelle für die Stopps bauen
-                        stops_data = []
-                        for route in routes:
-                            for cp in route.get("checkpoints", []):
-                                an = fix_time(cp.get('realArrivalTime'))
-                                start = fix_time(cp.get('deliverSince'))
-                                ende = fix_time(cp.get('deliverTill'))
-                                
-                                status_text = "⚪ Offen"
-                                if an and start and ende:
-                                    if an < start:
-                                        status_text = f"🔵 Früh ({int((start - an).total_seconds() / 60)} min)"
-                                    elif an > ende:
-                                        status_text = f"🔴 Spät ({int((an - ende).total_seconds() / 60)} min)"
-                                    else:
-                                        status_text = "🟢 Pünktlich"
-                                
-                                stops_data.append({
-                                    "Adresse": cp.get("address", "Unbekannt"),
-                                    "Zeitfenster (Geplant)": f"{start.strftime('%H:%M') if start else '--'} - {ende.strftime('%H:%M') if ende else '--'}",
-                                    "Ankunft (Ist-Zeit)": an.strftime('%H:%M') if an else "--",
-                                    "Status": status_text
-                                })
-                        
-                        if stops_data:
-                            # Daten in einen sauberen DataFrame packen
-                            df_stops = pd.DataFrame(stops_data)
-                            st.dataframe(df_stops, use_container_width=True, hide_index=True)
-                else:
-                    st.error("Details konnten nicht geladen werden.")
-            except Exception as e:
-                 st.error(f"Fehler: {e}")
+                        st.error("Details konnten nicht geladen werden.")
+                except Exception as e:
+                     st.error(f"Fehler: {e}")
+            else:
+                # Wenn noch niemand angeklickt wurde
+                st.info("👈 Bitte klicke links auf einen Fahrer, um hier seine Zeiten zu sehen.")
 
     else:
         st.info("Keine Daten gefunden. Haben die Fahrer heute Touren?")
