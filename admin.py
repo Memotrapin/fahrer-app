@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
 # TRAGE HIER DEINEN ECHTEN KEY EIN:
-SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" 
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP"
 
 st.set_page_config(page_title="Fahrer & Admin App", layout="wide", initial_sidebar_state="collapsed")
 
