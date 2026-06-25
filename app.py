@@ -1,12 +1,13 @@
 import streamlit as st
 import requests
 import pandas as pd
+import concurrent.futures  # NEU: Für gleichzeitiges (paralleles) Laden
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
 SUPABASE_URL = "https://eytdvmenynabwltnryto.supabase.co"
 # TRAGE HIER DEINEN ECHTEN KEY EIN:
-SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP"
+SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP" 
 
 st.set_page_config(page_title="Fahrer & Admin App", layout="wide", initial_sidebar_state="collapsed")
 
@@ -25,10 +26,7 @@ st.markdown("""
 # Übersetzungen 
 TRANSLATIONS = {
     "Deutsch": {"Stopps": "Stopps", "Geliefert": "Geliefert", "Fenster": "Fenster", "Plan": "Plan", "Ist": "Ist", "Früh": "min früh", "Pünktlich": "Pünktlich", "Spät": "min spät", "Offen": "Offen"},
-    "English": {"Stopps": "Stops", "Geliefert": "Delivered", "Fenster": "Window", "Plan": "Plan", "Ist": "Actual", "Früh": "min early", "Pünktlich": "On time", "Spät": "min late", "Offen": "Open"},
-    "Türkçe": {"Stopps": "Duraklar", "Geliefert": "Teslim", "Fenster": "Pencere", "Plan": "Plan", "Ist": "Gelen", "Früh": "dk erken", "Pünktlich": "Zamanında", "Spät": "dk geç", "Offen": "Açık"},
-    "Русский": {"Stopps": "Остановки", "Geliefert": "Доставлено", "Fenster": "Окно", "Plan": "План", "Ist": "Факт", "Früh": "мин рано", "Pünktlich": "Вовремя", "Spät": "мин поздно", "Offen": "Открыто"},
-    "العربية": {"Stopps": "توقف", "Geliefert": "تم التوصيل", "Fenster": "نافذة", "Plan": "خطة", "Ist": "فعلي", "Früh": "دقيقة مبكر", "Pünktlich": "في الموعد", "Spät": "دقيقة متأخر", "Offen": "مفتوح"}
+    "English": {"Stopps": "Stops", "Geliefert": "Delivered", "Fenster": "Window", "Plan": "Plan", "Ist": "Actual", "Früh": "min early", "Pünktlich": "On time", "Spät": "min late", "Offen": "Open"}
 }
 
 # --- HILFSFUNKTIONEN ---
@@ -36,6 +34,27 @@ def fix_time(time_str):
     if not time_str: return None
     clean_str = time_str.replace("Z", "").split("+")[0]
     return datetime.fromisoformat(clean_str) + timedelta(hours=2)
+
+# Funktion, die die Daten für EINEN EINZIGEN Fahrer holt (wird gleich parallel gestartet)
+def fetch_single_driver_data(driver, heute):
+    d_id = driver.get('id')
+    d_name = driver.get('name', 'Unbekannt')
+    tour_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{d_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
+    
+    try:
+        res = requests.get(tour_url, timeout=5) # Max 5 Sekunden warten pro Fahrer
+        if res.status_code == 200:
+            data = res.json()
+            gesamt_stopps = sum(r.get("numTotalOrders", 0) for r in data.get("routes", []))
+            geliefert = sum(r.get("numDeliveredOrders", 0) for r in data.get("routes", []))
+            status = "Aktiv" if gesamt_stopps > 0 else "Keine Tour"
+            return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": gesamt_stopps, "Geliefert": geliefert, "Offen": gesamt_stopps - geliefert, "Status": status}
+    except Exception:
+        pass
+    
+    # Wenn er keine Tour hat oder ein Fehler aufgetreten ist
+    return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": 0, "Geliefert": 0, "Offen": 0, "Status": "Keine Tour"}
+
 
 @st.cache_data(ttl=60)
 def load_all_driver_data():
@@ -49,26 +68,26 @@ def load_all_driver_data():
         return []
 
     admin_data = []
-    progress_text = "Lade Tourdaten..."
-    my_bar = st.progress(0, text=progress_text)
     total_drivers = len(drivers_response)
     heute = datetime.now().strftime('%Y-%m-%d')
+    
+    my_bar = st.progress(0, text=f"Lade {total_drivers} Fahrer gleichzeitig...")
 
-    for index, driver in enumerate(drivers_response):
-        d_id = driver.get('id')
-        d_name = driver.get('name', 'Unbekannt')
-        tour_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{d_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
-        try:
-            res = requests.get(tour_url)
-            if res.status_code == 200:
-                data = res.json()
-                gesamt_stopps = sum(r.get("numTotalOrders", 0) for r in data.get("routes", []))
-                geliefert = sum(r.get("numDeliveredOrders", 0) for r in data.get("routes", []))
-                status = "Aktiv" if gesamt_stopps > 0 else "Keine Tour"
-                admin_data.append({"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": gesamt_stopps, "Geliefert": geliefert, "Offen": gesamt_stopps - geliefert, "Status": status})
-        except Exception:
-            pass 
-        my_bar.progress((index + 1) / total_drivers, text=f"Lade Daten für {d_name}...")
+    # NEU: Hier laden wir 20 Fahrer gleichzeitig statt alle nacheinander!
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # Startet alle Anfragen parallel
+        futures = {executor.submit(fetch_single_driver_data, driver, heute): driver for driver in drivers_response}
+        
+        erledigt = 0
+        for future in concurrent.futures.as_completed(futures):
+            erledigt += 1
+            # Update Ladebalken
+            my_bar.progress(erledigt / total_drivers, text=f"Lade Daten... ({erledigt}/{total_drivers})")
+            
+            result = future.result()
+            if result:
+                admin_data.append(result)
+
     my_bar.empty()
     return admin_data
 
