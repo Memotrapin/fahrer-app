@@ -10,7 +10,7 @@ SUPABASE_KEY = "sb_publishable_2ylpUDTGGt9CfCW-75nwDg_j6ChUpgP"
 
 st.set_page_config(page_title="Fahrer & Admin App", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS FÜR HANDY-OPTIMIERUNG (Fahrer) ---
+# --- CSS FÜR HANDY & KARTEN ---
 st.markdown("""
     <style>
     .block-container { padding: 10px; }
@@ -81,8 +81,7 @@ if "role" not in st.session_state:
 
 # --- LOGIN BEREICH ---
 if not st.session_state.logged_in:
-    # HIER IST DIE TEST-ÜBERSCHRIFT:
-    st.title("🚛 Login (Test-Version)")
+    st.title("🚛 App Login")
     uid = st.text_input("ID")
     pwd = st.text_input("Passwort", type="password")
     
@@ -122,9 +121,10 @@ elif st.session_state.role == "admin":
             st.rerun()
 
     st.title("📊 Zentrales Admin-Dashboard")
+    heute_str = datetime.now().strftime('%Y-%m-%d')
     st.subheader(f"Tagesübersicht für den {datetime.now().strftime('%d.%m.%Y')}")
 
-    if st.button("🔄 Daten jetzt aktualisieren"):
+    if st.button("🔄 Alle Daten aktualisieren"):
         st.cache_data.clear() 
         st.rerun()
 
@@ -140,7 +140,61 @@ elif st.session_state.role == "admin":
         col4.metric("Noch Offen", df["Offen"].sum())
         
         st.write("---")
+        # Große Tabelle anzeigen
         st.dataframe(df.sort_values(by="Offen", ascending=False), use_container_width=True, hide_index=True)
+        
+        # --- NEU: LUPE FÜR EINZELNE FAHRER ---
+        st.write("---")
+        st.subheader("🔍 Detailansicht: Einzelne Fahrer")
+        
+        # Dropdown-Menü Liste erstellen
+        driver_dict = {f"{row['Name']} (ID: {row['Fahrer-ID']})": row['Fahrer-ID'] for row in data}
+        
+        selected_driver_name = st.selectbox(
+            "Wähle einen Fahrer aus, um seine Tour im Detail zu sehen:", 
+            ["Bitte wählen..."] + list(driver_dict.keys())
+        )
+        
+        if selected_driver_name != "Bitte wählen...":
+            selected_id = driver_dict[selected_driver_name]
+            t = TRANSLATIONS["Deutsch"] # Admin sieht Details auf Deutsch
+            
+            detail_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{selected_id}/{heute_str}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
+            
+            try:
+                res_detail = requests.get(detail_url)
+                if res_detail.status_code == 200:
+                    routes = res_detail.json().get("routes", [])
+                    if not routes:
+                        st.info("Dieser Fahrer hat heute keine Touren geplant.")
+                    else:
+                        for route in routes:
+                            st.markdown(f'<div class="stats-bar"><div>{t["Stopps"]}: {route.get("numTotalOrders")}</div><div>{t["Geliefert"]}: {route.get("numDeliveredOrders")}</div></div>', unsafe_allow_html=True)
+                            html_list = ""
+                            for cp in route.get("checkpoints", []):
+                                an = fix_time(cp.get('realArrivalTime'))
+                                start = fix_time(cp.get('deliverSince'))
+                                ende = fix_time(cp.get('deliverTill'))
+                                
+                                status_text = t["Offen"]; color = "gray"
+                                if an and start and ende:
+                                    if an < start:
+                                        status_text = f"{int((start - an).total_seconds() / 60)} {t['Früh']}"; color = "#0056b3"
+                                    elif an > ende:
+                                        status_text = f"{int((an - ende).total_seconds() / 60)} {t['Spät']}"; color = "#dc3545"
+                                    else:
+                                        status_text = t["Pünktlich"]; color = "#28a745"
+                                
+                                html_list += f'<div class="stop-card" style="border-left: 5px solid {color};"><div class="stop-address">{cp.get("address")}</div><div class="stop-times">{t["Fenster"]}: {start.strftime("%H:%M") if start else "--"}-{ende.strftime("%H:%M") if ende else "--"} | {t["Ist"]}: <b>{an.strftime("%H:%M") if an else "--"}</b></div><div class="stop-status" style="color: {color};">{status_text}</div></div>'
+                            
+                            col_space1, col_center, col_space3 = st.columns([1, 2, 1])
+                            with col_center:
+                                st.markdown(html_list, unsafe_allow_html=True)
+                else:
+                    st.error("Details konnten nicht geladen werden.")
+            except Exception as e:
+                 st.error(f"Fehler: {e}")
+
     else:
         st.info("Keine Daten gefunden. Haben die Fahrer heute Touren?")
 
