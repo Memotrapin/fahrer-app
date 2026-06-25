@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-import concurrent.futures  # NEU: Für gleichzeitiges (paralleles) Laden
+import concurrent.futures
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
@@ -35,14 +35,13 @@ def fix_time(time_str):
     clean_str = time_str.replace("Z", "").split("+")[0]
     return datetime.fromisoformat(clean_str) + timedelta(hours=2)
 
-# Funktion, die die Daten für EINEN EINZIGEN Fahrer holt (wird gleich parallel gestartet)
 def fetch_single_driver_data(driver, heute):
     d_id = driver.get('id')
     d_name = driver.get('name', 'Unbekannt')
     tour_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{d_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
     
     try:
-        res = requests.get(tour_url, timeout=5) # Max 5 Sekunden warten pro Fahrer
+        res = requests.get(tour_url, timeout=5)
         if res.status_code == 200:
             data = res.json()
             gesamt_stopps = sum(r.get("numTotalOrders", 0) for r in data.get("routes", []))
@@ -51,10 +50,7 @@ def fetch_single_driver_data(driver, heute):
             return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": gesamt_stopps, "Geliefert": geliefert, "Offen": gesamt_stopps - geliefert, "Status": status}
     except Exception:
         pass
-    
-    # Wenn er keine Tour hat oder ein Fehler aufgetreten ist
     return {"Fahrer-ID": d_id, "Name": d_name, "Gesamt Stopps": 0, "Geliefert": 0, "Offen": 0, "Status": "Keine Tour"}
-
 
 @st.cache_data(ttl=60)
 def load_all_driver_data():
@@ -70,20 +66,14 @@ def load_all_driver_data():
     admin_data = []
     total_drivers = len(drivers_response)
     heute = datetime.now().strftime('%Y-%m-%d')
-    
     my_bar = st.progress(0, text=f"Lade {total_drivers} Fahrer gleichzeitig...")
 
-    # NEU: Hier laden wir 20 Fahrer gleichzeitig statt alle nacheinander!
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        # Startet alle Anfragen parallel
         futures = {executor.submit(fetch_single_driver_data, driver, heute): driver for driver in drivers_response}
-        
         erledigt = 0
         for future in concurrent.futures.as_completed(futures):
             erledigt += 1
-            # Update Ladebalken
             my_bar.progress(erledigt / total_drivers, text=f"Lade Daten... ({erledigt}/{total_drivers})")
-            
             result = future.result()
             if result:
                 admin_data.append(result)
@@ -108,13 +98,11 @@ if not st.session_state.logged_in:
         clean_uid = uid.strip()
         clean_pwd = pwd.strip()
         
-        # 1. Prüfen, ob es der Admin ist
         if clean_uid == "99999" and clean_pwd == "3300":
             st.session_state.logged_in = True
             st.session_state.role = "admin"
             st.rerun()
         else:
-            # 2. Wenn nicht Admin, in Supabase nach Fahrer suchen
             url = f"{SUPABASE_URL}/rest/v1/drivers?id=eq.{clean_uid}&passwort=eq.{clean_pwd}"
             headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
             try:
@@ -159,25 +147,33 @@ elif st.session_state.role == "admin":
         col4.metric("Noch Offen", df["Offen"].sum())
         
         st.write("---")
-        # Große Tabelle anzeigen
-        st.dataframe(df.sort_values(by="Offen", ascending=False), use_container_width=True, hide_index=True)
+        st.markdown("👇 **Klicke auf eine Zeile in der Tabelle**, um die Details und Verspätungen des Fahrers zu sehen!")
         
-        # --- NEU: LUPE FÜR EINZELNE FAHRER ---
-        st.write("---")
-        st.subheader("🔍 Detailansicht: Einzelne Fahrer")
+        # Tabelle sortieren und Index zurücksetzen (WICHTIG für anklickbare Tabellen)
+        df_sorted = df.sort_values(by="Offen", ascending=False).reset_index(drop=True)
         
-        # Dropdown-Menü Liste erstellen
-        driver_dict = {f"{row['Name']} (ID: {row['Fahrer-ID']})": row['Fahrer-ID'] for row in data}
-        
-        selected_driver_name = st.selectbox(
-            "Wähle einen Fahrer aus, um seine Tour im Detail zu sehen:", 
-            ["Bitte wählen..."] + list(driver_dict.keys())
+        # Interaktive Tabelle anzeigen
+        event = st.dataframe(
+            df_sorted, 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",           # Erlaubt das Anklicken!
+            selection_mode="single-row"  # Nur eine Zeile gleichzeitig
         )
         
-        if selected_driver_name != "Bitte wählen...":
-            selected_id = driver_dict[selected_driver_name]
-            t = TRANSLATIONS["Deutsch"] # Admin sieht Details auf Deutsch
+        # Prüfen, ob der Admin eine Zeile angeklickt hat
+        selected_rows = event.selection.rows
+        
+        if selected_rows:
+            # Daten aus der angeklickten Zeile holen
+            row_idx = selected_rows[0]
+            selected_id = df_sorted.iloc[row_idx]["Fahrer-ID"]
+            selected_name = df_sorted.iloc[row_idx]["Name"]
             
+            st.write("---")
+            st.subheader(f"🔍 Detailansicht: {selected_name}")
+            
+            t = TRANSLATIONS["Deutsch"]
             detail_url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{selected_id}/{heute_str}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
             
             try:
