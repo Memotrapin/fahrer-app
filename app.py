@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-import concurrent.futures
 from datetime import datetime, timedelta
 
 # --- KONFIGURATION ---
@@ -57,7 +56,6 @@ elif st.session_state.role == "admin":
     st.title("📊 Admin-Dashboard")
     if st.button("🔄 Aktualisieren"): st.cache_data.clear(); st.rerun()
     
-    # Daten laden
     headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
     drivers = requests.get(f"{SUPABASE_URL}/rest/v1/drivers?select=id,name", headers=headers).json()
     heute = datetime.now().strftime('%Y-%m-%d')
@@ -102,7 +100,12 @@ elif st.session_state.role == "driver":
     url = f"https://uftplslamjbbhlozsygo.supabase.co/functions/v1/fetch-drivers-detail/{st.session_state.driver_id}/{heute}?organizationId=b993a325-6d34-4af5-a955-3d0b5e07cd47"
     try:
         res = requests.get(url).json()
-        for route in res.get("routes", []):
+        for idx, route in enumerate(res.get("routes", []), 1):
+            st.markdown(f"**🚚 Tour {idx}**")
+            stops = []
             for cp in route.get("checkpoints", []):
-                st.write(f"📍 {cp.get('address')}")
-    except: st.error("Fehler beim Laden deiner Tour.")
+                an = fix_time(cp.get('realArrivalTime'))
+                s, e = fix_time(cp.get('deliverSince')), fix_time(cp.get('deliverTill'))
+                stops.append({"Adresse": cp.get("address"), "Fenster": f"{s.strftime('%H:%M') if s else '--'}-{e.strftime('%H:%M') if e else '--'}", "Ist": an.strftime('%H:%M') if an else "--", "Status": get_status(an, s, e)})
+            st.dataframe(pd.DataFrame(stops), use_container_width=True, hide_index=True)
+    except: st.error("Fehler beim Laden deiner Touren.")
